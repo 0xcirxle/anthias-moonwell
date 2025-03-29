@@ -12,12 +12,12 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "ponder": "^0.10.6",
     "hono": "^4.5.0",
+    "ponder": "^0.10.6",
     "viem": "^2.21.3"
   },
   "devDependencies": {
-    "@types/node": "^20.9.0",
+    "@types/node": "^20.17.28",
     "eslint": "^8.53.0",
     "eslint-config-ponder": "^0.10.6",
     "typescript": "^5.2.2"

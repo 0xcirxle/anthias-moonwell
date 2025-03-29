@@ -17,6 +17,7 @@ export const marketParameters = onchainTable(
     supplyCap: t.bigint(),
     borrowCap: t.bigint(),
     liquidationIncentive: t.bigint(),
+    borrowEnabled: t.boolean().default(false), // Track if borrowing is enabled for this market
 
     blockTimestamp: t.bigint(),
   }),

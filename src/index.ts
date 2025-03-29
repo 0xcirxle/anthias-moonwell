@@ -2,8 +2,7 @@ import { ponder } from "ponder:registry";
 import { marketParameters, userPositions, userTransactions } from "ponder:schema";
 // Add imports for direct contract interaction testing
 import { createPublicClient, http, defineChain } from "viem";
-import { ComptrollerAbi } from "/Users/aniruddh/anthias-moonwell/mw copy/abis/Comptroller";
-
+import { ComptrollerAbi } from "../abis/Comptroller";
 // ABI types for correct contract interactions
 type BorrowEvent = {
   borrower: `0x${string}`;
@@ -81,16 +80,14 @@ ponder.on("MarketParamsCheck:block", async ({ event, context }) => {
     let cash = 0n;
     let reserves = 0n;
     let reserveFactor = 0n;
-    let supplyCap = 0n;
     let borrowCap = 0n;
+    let supplyCap = 0n;
     let collateralFactor = 0n;
     let liquidationIncentive = 0n;
     let utilization = 0;
     
-    console.log(`Processing market parameters for block ${blockNumber}`);
+    console.log(`\n---------- WETH METRICS (Block ${blockNumber}) ----------`);
 
-    // 2) Read contract data with proper error handling for each call
-    
     // A) MToken calls for market data
     try {
       totalBorrows = await context.client.readContract({
@@ -98,8 +95,9 @@ ponder.on("MarketParamsCheck:block", async ({ event, context }) => {
         address: context.contracts.MToken.address,
         functionName: "totalBorrows",
       });
+      console.log(`→ Total Borrows: ${Number(totalBorrows) / 1e18} ETH`);
     } catch (error) {
-      console.error("Error reading totalBorrows:", error);
+      console.log("→ Error reading totalBorrows");
     }
 
     try {
@@ -108,8 +106,9 @@ ponder.on("MarketParamsCheck:block", async ({ event, context }) => {
         address: context.contracts.MToken.address,
         functionName: "getCash",
       });
+      console.log(`→ Cash: ${Number(cash) / 1e18} ETH`);
     } catch (error) {
-      console.error("Error reading getCash:", error);
+      console.log("→ Error reading getCash");
     }
 
     try {
@@ -118,8 +117,9 @@ ponder.on("MarketParamsCheck:block", async ({ event, context }) => {
         address: context.contracts.MToken.address,
         functionName: "totalReserves",
       });
+      console.log(`→ Reserves: ${Number(reserves) / 1e18} ETH`);
     } catch (error) {
-      console.error("Error reading totalReserves:", error);
+      console.log("→ Error reading totalReserves");
     }
 
     try {
@@ -128,88 +128,31 @@ ponder.on("MarketParamsCheck:block", async ({ event, context }) => {
         address: context.contracts.MToken.address,
         functionName: "reserveFactorMantissa",
       });
+      const reserveFactorPct = Number(reserveFactor) / 1e18 * 100;
+      console.log(`→ Reserve factor: ${reserveFactorPct.toFixed(2)}%`);
     } catch (error) {
-      console.error("Error reading reserveFactorMantissa:", error);
+      console.log("→ Error reading reserveFactorMantissa");
     }
 
     // B) Compute utilization (only if we have valid data)
     const sumBig = totalBorrows + cash;
     if (sumBig > 0n) {
       utilization = Number(totalBorrows) / Number(sumBig);
+      console.log(`→ Utilization: ${(utilization * 100).toFixed(2)}%`);
     }
+    
+    // C) Liquidity = Supplied - Borrowed (in this case, cash is the supplied amount not yet borrowed)
+    const liquidity = Number(cash) / 1e18;
+    console.log(`→ Liquidity (Supplied - Borrowed): ${liquidity.toFixed(4)} ETH`);
 
-    // C) Comptroller calls for market parameters
-    try {
-      if (context.contracts.Comptroller) {
-        supplyCap = await context.client.readContract({
-          abi: context.contracts.Comptroller.abi,
-          address: context.contracts.Comptroller.address,
-          functionName: "supplyCaps",
-          args: [M_TOKEN_ETH_ADDRESS],
-        });
-      } else {
-        // Fallback to direct client
-        supplyCap = await directClient.readContract({
-          address: COMPTROLLER_ADDRESS,
-          abi: ComptrollerAbi,
-          functionName: 'supplyCaps',
-          args: [M_TOKEN_ETH_ADDRESS],
-        });
-      }
-    } catch (error) {
-      console.error("Error reading supplyCaps:", error);
-    }
-
-    try {
-      if (context.contracts.Comptroller) {
-        borrowCap = await context.client.readContract({
-          abi: context.contracts.Comptroller.abi,
-          address: context.contracts.Comptroller.address,
-          functionName: "borrowCaps",
-          args: [M_TOKEN_ETH_ADDRESS],
-        });
-      } else {
-        // Fallback to direct client
-        borrowCap = await directClient.readContract({
-          address: COMPTROLLER_ADDRESS,
-          abi: ComptrollerAbi,
-          functionName: 'borrowCaps',
-          args: [M_TOKEN_ETH_ADDRESS],
-        });
-      }
-    } catch (error) {
-      console.error("Error reading borrowCaps:", error);
-    }
-
-    try {
-      if (context.contracts.Comptroller) {
-        liquidationIncentive = await context.client.readContract({
-          abi: context.contracts.Comptroller.abi,
-          address: context.contracts.Comptroller.address,
-          functionName: "liquidationIncentiveMantissa",
-        });
-      } else {
-        // Fallback to direct client
-        liquidationIncentive = await directClient.readContract({
-          address: COMPTROLLER_ADDRESS,
-          abi: ComptrollerAbi,
-          functionName: 'liquidationIncentiveMantissa',
-        });
-      }
-    } catch (error) {
-      console.error("Error reading liquidationIncentiveMantissa:", error);
-    }
-
-    // Skip the problematic markets function call and use a default value
-    collateralFactor = 0n; // Default value instead of trying to read from contract
+    console.log(`--------------------------------------------\n`);
 
     // 3) Write to the DB even if some values are default/0
     try {
       await db.insert(marketParameters).values({
-        id: `${M_TOKEN_ETH_ADDRESS}-${blockNumber}`,
-        mTokenAddress: M_TOKEN_ETH_ADDRESS,
+        mTokenAddress: context.contracts.MToken.address,
         blockNumber: BigInt(blockNumber),
-        price: 0n, // No price oracle for now
+        price: 0n, // No price for now
         totalBorrows,
         utilization,
         collateralFactor,
@@ -218,6 +161,7 @@ ponder.on("MarketParamsCheck:block", async ({ event, context }) => {
         supplyCap,
         borrowCap,
         liquidationIncentive,
+        borrowEnabled: false, // Default value 
         blockTimestamp: BigInt(blockTimestamp),
       });
     } catch (error) {
